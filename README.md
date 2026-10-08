@@ -17,18 +17,43 @@
 
 ## 系统架构
 
+![CampusTaste 系统架构：React 调用 FastAPI，后端连接 PostgreSQL、Redis、MinIO 和 RabbitMQ，Celery Worker 消费任务并处理图片，Beat 调度任务](docs/architecture.svg)
+
+上图为静态 SVG，不依赖 GitHub 的 Mermaid 动态渲染。箭头表示 API 调用、存储访问或任务流向；[查看原图](docs/architecture.svg) · [Mermaid 源文件](docs/architecture.mmd)。
+
+<details>
+<summary>查看 Mermaid 交互图</summary>
+
 ```mermaid
-flowchart LR
-    Client[客户端 / API 文档] --> API[FastAPI]
-    API --> DB[PostgreSQL 业务数据与任务状态]
-    API --> Cache[Redis 缓存、限流与刷新会话]
-    API --> Storage[MinIO 原图]
-    API --> Broker[RabbitMQ]
-    Broker --> Worker[Celery Worker]
-    Worker --> Storage
-    Worker --> DB
-    Beat[Celery Beat 补偿调度] --> Broker
+flowchart TD
+    Frontend["React frontend"]
+    API["FastAPI"]
+    DB["PostgreSQL"]
+    Cache["Redis"]
+    Broker["RabbitMQ"]
+    Worker["Celery Worker"]
+    Storage["MinIO"]
+    Beat["Celery Beat"]
+
+    Frontend -->|HTTP API| API
+    API -->|Read and write| DB
+    API -->|Cache and auth| Cache
+    API -->|Upload originals| Storage
+    API -->|Publish jobs| Broker
+    Beat -->|Schedule tasks| Broker
+    Broker -->|Deliver tasks| Worker
+    Worker -->|Job state| DB
+    Worker -->|Read and write images| Storage
+    Worker -->|Retry and dispatch| Broker
 ```
+
+</details>
+
+- **前端 → FastAPI**：模板 React 前端通过 HTTP 调用后端，地址来自 `VITE_API_URL`，为空时使用同源地址。模板构建后的前端由 FastAPI 托管；`compose.campustaste.yml` 只启动后端演示栈，不构建或启动校园业务前端。
+- **FastAPI → PostgreSQL / Redis / MinIO**：分别读写业务与任务记录，访问缓存、限流和刷新会话，以及上传图片原图。图片访问接口返回 MinIO 签名 URL；图中不代表模板前端已实现图片业务。
+- **FastAPI / Beat → RabbitMQ → Worker**：API 发布图片任务，Beat 每 30 秒发布补偿扫描任务。Worker 消费任务、读写 PostgreSQL 任务状态和 MinIO 图片，并向 RabbitMQ 发布重试或补偿派发任务；补偿扫描实际由 Worker 执行，Beat 不直接扫描数据库。Redis 未用作 Celery broker 或 result backend。
+
+关系依据：[前端请求配置](frontend/src/main.tsx)、[图片服务](backend/app/services/images.py)、[任务实现](backend/app/tasks.py)、[Celery 配置](backend/app/worker.py)及[后端 Compose](compose.campustaste.yml)。
 
 后端使用 Python 3.14、FastAPI、SQLModel/SQLAlchemy、Pydantic 和 Alembic；异步任务使用 Celery + RabbitMQ，图片处理使用 Pillow，文件存储使用 MinIO。Docker Compose 编排本地依赖、迁移、API、Worker 和 Beat。前端保留模板的 React、TypeScript 与 Vite。
 

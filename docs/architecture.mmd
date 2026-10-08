@@ -1,0 +1,20 @@
+flowchart TD
+    Frontend["React frontend"]
+    API["FastAPI"]
+    DB["PostgreSQL"]
+    Cache["Redis"]
+    Broker["RabbitMQ"]
+    Worker["Celery Worker"]
+    Storage["MinIO"]
+    Beat["Celery Beat"]
+
+    Frontend -->|HTTP API| API
+    API -->|Read and write| DB
+    API -->|Cache and auth| Cache
+    API -->|Upload originals| Storage
+    API -->|Publish jobs| Broker
+    Beat -->|Schedule tasks| Broker
+    Broker -->|Deliver tasks| Worker
+    Worker -->|Job state| DB
+    Worker -->|Read and write images| Storage
+    Worker -->|Retry and dispatch| Broker
