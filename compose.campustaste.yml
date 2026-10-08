@@ -1,0 +1,82 @@
+# 后端演示栈；模板前端仍使用原 compose.yml。
+x-app: &app
+  image: campustaste-backend:local
+  build:
+    context: .
+    dockerfile: backend/Dockerfile.api
+    network: host
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Variable not set}@db:5432/app
+    REDIS_URL: redis://redis:6379/0
+    RABBITMQ_URL: amqp://${RABBITMQ_USER:?Variable not set}:${RABBITMQ_PASSWORD:?Variable not set}@rabbitmq:5672//
+    MINIO_ENDPOINT: minio:9000
+    MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
+  restart: unless-stopped
+
+services:
+  db:
+    extends: {file: compose.yml, service: db}
+    ports: ["127.0.0.1:5432:5432"]
+  redis:
+    extends: {file: compose.yml, service: redis}
+    ports: ["127.0.0.1:6379:6379"]
+  rabbitmq:
+    extends: {file: compose.yml, service: rabbitmq}
+    ports: ["127.0.0.1:5672:5672", "127.0.0.1:15672:15672"]
+  minio:
+    extends: {file: compose.yml, service: minio}
+    build:
+      context: ./docker/minio
+      network: host
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+  mailpit:
+    image: axllent/mailpit
+    ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
+  migrate:
+    <<: *app
+    command: ["bash", "scripts/prestart.sh"]
+    restart: "no"
+    depends_on:
+      db: {condition: service_healthy}
+  backend:
+    <<: *app
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Variable not set}@db:5432/app
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?Variable not set}:${RABBITMQ_PASSWORD:?Variable not set}@rabbitmq:5672//
+      MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_TLS: "false"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/utils/ready/', timeout=12)"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+  worker:
+    <<: *app
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--concurrency=2", "--loglevel=INFO", "--without-mingle", "--without-gossip"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+      minio: {condition: service_healthy}
+  beat:
+    <<: *app
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=INFO"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+
+volumes:
+  app-db-data:
+  app-redis-data:
+  app-rabbitmq-data:
+  app-minio-data:

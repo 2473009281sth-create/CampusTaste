@@ -1,0 +1,20 @@
+name: CampusTaste Compose Configuration
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: 验证后端演示栈配置
+        run: |
+          cp .env.example .env
+          docker compose -f compose.campustaste.yml config --quiet
+          bash -n scripts/start-campus.sh

@@ -1,0 +1,32 @@
+.vscode/*
+!.vscode/extensions.json
+node_modules/
+backend/app/frontend/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# CampusTaste local secrets and environment
+.env
+.env.*
+!.env.example
+.venv/
+.local/
+# 本地生成的压测数据和结果，报告摘要单独写入 docs/performance.md。
+backend/loadtests/dataset.json
+backend/loadtests/results/
+
+# Python 缓存与测试生成文件（适用于所有子目录）
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# 本地招聘交付副本和测试日志，源码与测试摘要保留在仓库
+/宋天訸_Python后端代码样例.zip
+/recruitment_sample/test_log.txt

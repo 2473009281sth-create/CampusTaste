@@ -1,0 +1,58 @@
+name: CampusTaste Backend
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.1"
+      - name: 创建临时 CI 配置
+        run: |
+          python - <<'PY'
+          import pathlib
+          data = pathlib.Path('.env.example').read_text()
+          data = data.replace('changethis', 'ci-only-password-not-for-deployment')
+          data = data.replace('replace-with-local-user', 'ci-user')
+          data = data.replace('replace-with-local-password', 'ci-only-broker-password')
+          data = data.replace('replace-with-local-access-key', 'ci-access-key')
+          data = data.replace('replace-with-local-secret-key', 'ci-only-storage-password')
+          pathlib.Path('.env').write_text(data)
+          PY
+      - name: 安装锁定依赖
+        run: uv sync --frozen --package app
+      - name: 静态检查
+        working-directory: backend
+        run: |
+          uv run --frozen --package app ruff check app tests scripts loadtests
+          uv run --frozen --package app ruff format --check app tests scripts loadtests
+          uv run --frozen --package app mypy app
+          uv run --frozen --package app ty check app
+      - name: 启动真实依赖
+        run: docker compose -f compose.campustaste.yml up -d --build --wait db redis rabbitmq minio mailpit
+      - name: 独立数据库完整测试与迁移检查
+        working-directory: backend
+        run: uv run --frozen --package app python scripts/test-stage5.py
+      - name: 保存覆盖率
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: backend-coverage
+          path: backend/.coverage
+          include-hidden-files: true
+      - name: 清理临时 CI 容器
+        if: always()
+        run: docker compose -f compose.campustaste.yml down -v

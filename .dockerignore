@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+backend/loadtests/results
+**/__pycache__
+**/.venv
+backend/htmlcov
+frontend/blob-report
+frontend/dist
+frontend/node_modules
+frontend/playwright-report
+frontend/test-results
+node_modules
